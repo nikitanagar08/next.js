@@ -83,3 +83,85 @@ describe('agent-rules auto-generate on next dev (agentRules: false)', () => {
     expect(fs.existsSync(path.join(next.testDir, 'CLAUDE.md'))).toBe(false)
   })
 })
+
+describe('agent-rules auto-generate on next dev (AGENTS.md already has marker)', () => {
+  const { next } = nextTestSetup({
+    files: __dirname,
+    env: { CLAUDECODE: '1' },
+    skipStart: true,
+  })
+
+  beforeAll(async () => {
+    // Pre-populate AGENTS.md WITH the managed marker before the dev
+    // server starts, so the auto-gen sees it as already installed.
+    await next.patchFile('AGENTS.md', `${AGENT_RULES_MARKER}\n`)
+    await next.start()
+  })
+
+  it('leaves the file untouched and does not create CLAUDE.md', async () => {
+    const res = await next.fetch('/')
+    expect(res.status).toBe(200)
+
+    const content = fs.readFileSync(
+      path.join(next.testDir, 'AGENTS.md'),
+      'utf-8'
+    )
+    expect(content).toBe(`${AGENT_RULES_MARKER}\n`)
+    expect(fs.existsSync(path.join(next.testDir, 'CLAUDE.md'))).toBe(false)
+  })
+})
+
+describe('agent-rules auto-generate on next dev (AGENTS.md exists without marker)', () => {
+  const { next } = nextTestSetup({
+    files: __dirname,
+    env: { CLAUDECODE: '1' },
+    skipStart: true,
+  })
+
+  beforeAll(async () => {
+    // User-authored AGENTS.md without the managed marker — auto-gen
+    // should upsert the block while preserving existing content.
+    await next.patchFile('AGENTS.md', '# Team rules\n\nUse tabs, not spaces.\n')
+    await next.start()
+  })
+
+  it('upserts the managed block and preserves existing content', async () => {
+    const res = await next.fetch('/')
+    expect(res.status).toBe(200)
+
+    const content = fs.readFileSync(
+      path.join(next.testDir, 'AGENTS.md'),
+      'utf-8'
+    )
+    expect(content).toContain('Use tabs, not spaces.')
+    expect(content).toContain(AGENT_RULES_MARKER)
+    // CLAUDE.md must stay alone when AGENTS.md already exists.
+    expect(fs.existsSync(path.join(next.testDir, 'CLAUDE.md'))).toBe(false)
+  })
+})
+
+describe('agent-rules auto-generate on next dev (CLAUDE.md exists, no AGENTS.md)', () => {
+  const { next } = nextTestSetup({
+    files: __dirname,
+    env: { CLAUDECODE: '1' },
+    skipStart: true,
+  })
+
+  beforeAll(async () => {
+    await next.patchFile('CLAUDE.md', '# My rules\n\nBe concise.\n')
+    await next.start()
+  })
+
+  it('upserts into CLAUDE.md and does not create AGENTS.md', async () => {
+    const res = await next.fetch('/')
+    expect(res.status).toBe(200)
+
+    const claudeContent = fs.readFileSync(
+      path.join(next.testDir, 'CLAUDE.md'),
+      'utf-8'
+    )
+    expect(claudeContent).toContain('Be concise.')
+    expect(claudeContent).toContain(AGENT_RULES_MARKER)
+    expect(fs.existsSync(path.join(next.testDir, 'AGENTS.md'))).toBe(false)
+  })
+})
